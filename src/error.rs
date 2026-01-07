@@ -36,33 +36,33 @@ impl fmt::Display for UniClipError {
             UniClipError::DisconnectedError => write!(f, "Client disconnected."),
             UniClipError::TimeoutError => write!(f, "Timed out while trying to reach the client."),
             UniClipError::SystemClockError => {
-                write!(f, "Could not use System Clock. Are clocks synced?")
+                write!(f, "Could not use System Clock. Are these clocks synced?")
             }
             UniClipError::MessageTooLargeError => {
                 write!(f, "Trying to send a message that is too large.")
             }
             UniClipError::ConnectionError(msg) => {
-                write!(f, "Broken connection. Details: \n{}", msg)
+                write!(f, "Broken connection. Details: {}", msg)
             }
             UniClipError::PacketParseError(msg) => {
-                write!(f, "Failed to parse the packet. Details: \n{}", msg)
+                write!(f, "Failed to parse the packet. Details: {}", msg)
             }
             UniClipError::ClientError(msg) => {
-                write!(f, "Error received from the client: \n{}", msg)
+                write!(f, "Error received from the client: {}", msg)
             }
             UniClipError::ChannelError(msg) => {
-                write!(f, "Failed to send/recv from a channel: \n{}", msg)
+                write!(f, "Failed to send/recv from a channel: {}", msg)
             }
             UniClipError::ClipboardError(e) => {
                 write!(
                     f,
-                    "System clipboard is not available. Details: \n{}",
+                    "System clipboard is not available. Details: {}",
                     e.to_string()
                 )
             }
-            UniClipError::IOError(msg) => write!(f, "IOError occured! Details: \n {}", msg),
+            UniClipError::IOError(msg) => write!(f, "IOError occured! Details: {}", msg),
             UniClipError::UnknownError(msg) => {
-                write!(f, "An unknown error occured! Details: \n{}", msg)
+                write!(f, "An unknown error occured! Details: {}", msg)
             }
         }
     }

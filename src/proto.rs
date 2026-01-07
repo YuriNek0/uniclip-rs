@@ -21,7 +21,7 @@ use crate::timestamp::get_utc_now;
 const MAGIC_BYTES: [u8; 8] = *b"UNICLIP!";
 const TIME_RAND_RANGE: u32 = 10;
 
-#[derive(Unaligned, Immutable, TryFromBytes, IntoBytes, PartialEq, Eq)]
+#[derive(Unaligned, Immutable, TryFromBytes, IntoBytes, PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(u8)]
 enum MessageKind {
     HandShake,
@@ -32,7 +32,7 @@ enum MessageKind {
     Disconnect,
 }
 
-#[derive(Unaligned, Immutable, TryFromBytes, IntoBytes, KnownLayout)]
+#[derive(Unaligned, Immutable, TryFromBytes, IntoBytes, KnownLayout, Debug, Copy, Clone)]
 #[repr(packed)]
 struct MessageMeta {
     magic: [u8; 8],
@@ -41,12 +41,13 @@ struct MessageMeta {
     kind: MessageKind,
 }
 
+#[derive(Debug, Clone)]
 pub struct Message {
     meta: MessageMeta,
     content: Vec<u8>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Command {
     Sync,
     Text(u64, String),
@@ -96,7 +97,10 @@ impl Message {
         }
 
         if meta.len > 0 {
-            if meta.kind != MessageKind::Text && meta.kind != MessageKind::Image {
+            if !matches!(
+                meta.kind,
+                MessageKind::Text | MessageKind::Image | MessageKind::Error
+            ) {
                 return Err(PacketParseError(
                     "Non-empty data received in control messages.".to_string(),
                 ));
@@ -189,7 +193,7 @@ impl Connection {
             }
         };
 
-        let mut conn = Self {
+        let conn = Self {
             stream,
             initial_handshake_done: false,
             cmd_req_tx,
@@ -197,9 +201,8 @@ impl Connection {
             last_keep_alive: 0,
             last_sync: 0,
         };
-        let _ = conn.expect_handshake().await;
 
-        tracker.spawn(conn.connection_handler(addr.to_string(), client_token, false));
+        tracker.spawn(conn.connection_handler(addr.to_string(), client_token));
     }
 
     pub fn spawn_serve(
@@ -252,16 +255,16 @@ impl Connection {
 
                         // Each client has their own cancellation token.
                         // When the server token gets canceled, tokens for clients will be cancelled as well.
-                        // Server needs to send handshake first.
                         let client_token = cancel_token.child_token();
-                        _tracker.spawn(conn.connection_handler(
-                            client_addr.to_string(),
-                            client_token.clone(),
-                            true,
-                        ));
+                        _tracker.spawn(
+                            conn.connection_handler(client_addr.to_string(), client_token.clone()),
+                        );
                     }
                 })
                 .await;
+
+            // Close the tracker after listener is finished.
+            _tracker.close();
         };
         tracker.spawn(closure(tracker.clone()));
         ()
@@ -271,8 +274,8 @@ impl Connection {
         mut self: Self,
         addr: String,
         cancel_token: CancellationToken,
-        init_send_handshake: bool,
     ) -> () {
+        debug!("Starting connection handler for client {}.", addr);
         let closure = async |conn: &mut Self| -> Result<(), UniClipError> {
             let mut rng = SmallRng::from_os_rng();
             loop {
@@ -292,6 +295,8 @@ impl Connection {
                     conn.keep_alive().await?
                 }
 
+                let mut tmp_peek_buf: [u8; 16] = [0; 16];
+
                 // Cancellation safety: All selected arms are cancel safe.
                 tokio::select! {
                     biased;
@@ -307,14 +312,17 @@ impl Connection {
                         break;
                     }
                     _ = sleep_until(Instant::now() + Duration::from_secs(next_sync - now)) => {
+                        debug!("Sync timer elapsed.");
                         conn.req_sync().await?
                     }
 
                     _ = sleep_until(Instant::now() + Duration::from_secs(next_keep_alive - now)) => {
-                        conn.req_sync().await?
+                        debug!("Keep alive timer elapsed.");
+                        conn.keep_alive().await?
                     }
 
                     recv_result = conn.cmd_recv_rx.recv() => {
+                        debug!("Received command from clipboard:\n {:?}", recv_result);
                         match recv_result {
                             Err(e) => { return Err(ChannelError(e.to_string())); },
                             Ok(cmd) => {
@@ -327,7 +335,8 @@ impl Connection {
                         }
                     }
 
-                    _ = conn.stream.readable() => {
+                    _ = conn.stream.peek(&mut tmp_peek_buf) => {
+                        debug!("Data available at {}", addr);
                         let msg = Message::read_from_stream(&mut conn.stream).await?;
                         conn.handle_msg(&msg).await?
                     }
@@ -335,13 +344,13 @@ impl Connection {
             }
             Ok(())
         };
-        if init_send_handshake {
-            // Send handshake to the client and expecting a returned message
-            if let Err(e) = self.keep_alive().await {
-                let _ = e.panic(&addr, &cancel_token);
-                return ();
-            }
+
+        // Send handshake to the client and expecting a returned message
+        if let Err(e) = self.keep_alive().await {
+            let _ = e.panic(&addr, &cancel_token);
+            return ();
         }
+
         loop {
             let ret = closure(&mut self).await;
             if ret.is_ok() {
@@ -376,10 +385,13 @@ impl Connection {
     }
 
     async fn expect_handshake(self: &mut Self) -> Result<(), UniClipError> {
+        debug!("Listening for handshake message.");
         let closure = async move {
             loop {
                 let msg = Message::read_from_stream(&mut self.stream).await?;
                 if msg.meta.kind == MessageKind::HandShake {
+                    debug!("Handshake received.");
+
                     // Check if system clocks are synced.
                     if get_utc_now()?.abs_diff(msg.meta.stamp)
                         > ALLOWED_TIME_DIFF.get().unwrap().clone()
@@ -388,9 +400,17 @@ impl Connection {
                     }
 
                     self.initial_handshake_done = true;
+
+                    self.last_keep_alive = get_utc_now()?;
+                    self.last_sync = get_utc_now()?;
                     return Ok(());
                 }
-                if !self.initial_handshake_done {
+                if !self.initial_handshake_done
+                    && matches!(
+                        msg.meta.kind,
+                        MessageKind::Sync | MessageKind::Text | MessageKind::Image
+                    )
+                {
                     return Err(PacketParseError(
                         "Message received before handshake.".to_string(),
                     ));
@@ -406,6 +426,7 @@ impl Connection {
     }
 
     async fn send_handshake(self: &mut Self) -> Result<(), UniClipError> {
+        debug!("Sending handshake packet.");
         let req_msg = Message::new(MessageKind::HandShake, Vec::new(), None)?.to_packet();
         match timeout(
             Duration::from_secs(get_option(TIMEOUT_SEC)),
@@ -420,6 +441,7 @@ impl Connection {
     }
 
     async fn handle_msg(self: &mut Self, msg: &Message) -> Result<(), UniClipError> {
+        debug!("Message received: {:?}", msg);
         match msg.meta.kind {
             MessageKind::HandShake => {
                 self.last_keep_alive = get_utc_now()?;
@@ -475,12 +497,14 @@ impl Connection {
     }
 
     async fn keep_alive(self: &mut Self) -> Result<(), UniClipError> {
+        debug!("Trying keep alive.");
         self.send_handshake().await?;
         self.last_keep_alive = get_utc_now()?;
         self.expect_handshake().await
     }
 
     async fn req_sync(self: &mut Self) -> Result<(), UniClipError> {
+        debug!("Requesting Sync from other client.");
         let req_msg = Message::new(MessageKind::Sync, Vec::new(), None)?.to_packet();
         self.last_keep_alive = get_utc_now()?;
         self.last_sync = get_utc_now()?;
@@ -521,6 +545,13 @@ impl Connection {
         clipboard: &String,
         stamp: u64,
     ) -> Result<(), UniClipError> {
+        if !self.initial_handshake_done {
+            // Ignore all sending requests before handshake is done.
+            debug!("Ignoring text sending as the handshake has not been completed.");
+            return Ok(());
+        }
+
+        debug!("Sending text: {}", clipboard);
         let msg = Message::new(
             MessageKind::Text,
             clipboard.clone().into_bytes(),
@@ -542,6 +573,13 @@ impl Connection {
     }
 
     async fn send_image(self: &mut Self, clipboard: &[u8], stamp: u64) -> Result<(), UniClipError> {
+        if !self.initial_handshake_done {
+            // Ignore all sending requests before handshake is done.
+            debug!("Ignoring image sending as the handshake has not been completed.");
+            return Ok(());
+        }
+
+        debug!("Sending image.");
         let msg = Message::new(MessageKind::Text, clipboard.to_vec(), Some(stamp))?.to_packet();
         self.last_keep_alive = get_utc_now()?;
         self.last_sync = get_utc_now()?;

@@ -82,13 +82,15 @@ impl Clipboard {
         let state = match self.backend.get_text() {
             Ok(text) => ClipboardState::Text(text),
             Err(e) => match e {
-                ContentNotAvailable | ConversionFailure => match self.backend.get_image() {
-                    // Try Image
-                    Ok(img) => ClipboardState::Image(encode_as_png(&img)?),
-                    Err(e) => {
-                        return Err(ClipboardError(e));
+                ContentNotAvailable | ConversionFailure => {
+                    match self.backend.get_image() {
+                        // Try Image
+                        Ok(img) => ClipboardState::Image(encode_as_png(&img)?),
+                        Err(e) => {
+                            return Err(ClipboardError(e));
+                        }
                     }
-                },
+                }
                 _ => {
                     return Err(ClipboardError(e));
                 }
@@ -113,7 +115,9 @@ impl Clipboard {
     }
 
     pub fn set_text(self: &mut Self, s: String, stamp: u64) -> Result<(), UniClipError> {
+        debug!("Clipboard: Trying to set clipboard to: {}", s);
         if stamp <= self.ctx.stamp {
+            debug!("Clipboard: Failed - received data is expired.");
             return Ok(()); // Reject setting clipboard as the content is not the latest.
         }
 
@@ -125,7 +129,9 @@ impl Clipboard {
     }
 
     pub fn set_image(self: &mut Self, buf: Vec<u8>, stamp: u64) -> Result<(), UniClipError> {
+        debug!("Clipboard: Trying to set clipboard to: <image>");
         if stamp <= self.ctx.stamp {
+            debug!("Clipboard: Failed - received data is expired.");
             return Ok(()); // Reject setting clipboard as the content is not the latest.
         }
 

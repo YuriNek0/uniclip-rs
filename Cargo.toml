@@ -19,9 +19,6 @@ tokio-util = { version = "0.7.17", features = [ "rt" ] }
 zerocopy = "0.8.31"
 zerocopy-derive = "0.8.31"
 
-[lints.rust]
-unsafe_code = "forbid"
-
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }

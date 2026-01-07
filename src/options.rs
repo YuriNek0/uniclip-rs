@@ -18,9 +18,11 @@ pub static CLIPBOARD_POLL_FREQ_MS: &OnceLock<u64> = &_CLIPBOARD_POLL_FREQ_MS;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Use this option to start the server.
     #[arg(short, default_value_t = false)]
     server_mode: bool,
 
+    /// Server/Bind address. (e.g. "127.0.0.1:12345")
     connection_string: String,
 
     /// Allowed time difference between client and server.
@@ -28,7 +30,7 @@ struct Args {
     allowed_time_diff: u64,
 
     /// Interval to send keep alive packet.
-    #[arg(short, long, default_value_t = 30)]
+    #[arg(long, default_value_t = 30)]
     keep_alive: u64,
 
     /// Maximum message size in MB.
@@ -36,15 +38,15 @@ struct Args {
     max_message_size: u64,
 
     /// Interval to sync clipboard between client and server.
-    #[arg(short, long, default_value_t = 60)]
+    #[arg(long, default_value_t = 60)]
     sync_interval: u64,
 
     /// Timeout for network requests in second.
-    #[arg(short, long, default_value_t = 3)]
+    #[arg(long, default_value_t = 3)]
     timeout_sec: u64,
 
     /// Interval to poll from the system clipboard in millisecond.
-    #[arg(short, long, default_value_t = 500)]
+    #[arg(long, default_value_t = 500)]
     clipboard_poll_freq_ms: u64,
 }
 
