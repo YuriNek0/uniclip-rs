@@ -279,20 +279,28 @@ impl Connection {
         let closure = async |conn: &mut Self| -> Result<(), UniClipError> {
             let mut rng = SmallRng::from_os_rng();
             loop {
-                let now = get_utc_now()?;
-                let next_keep_alive = conn.last_keep_alive
+                let mut now = get_utc_now()?;
+                let mut next_keep_alive = conn.last_keep_alive
                     + get_option(KEEP_ALIVE)
                     + rng.random_range(0..TIME_RAND_RANGE) as u64;
-                let next_sync = conn.last_sync
+                let mut next_sync = conn.last_sync
                     + get_option(SYNC_INTERVAL)
                     + rng.random_range(0..TIME_RAND_RANGE) as u64;
 
                 if now > next_sync {
-                    conn.req_sync().await?
+                    conn.req_sync().await?;
+                    next_sync = conn.last_sync
+                        + get_option(SYNC_INTERVAL)
+                        + rng.random_range(0..TIME_RAND_RANGE) as u64;
+                    now = get_utc_now()?;
                 }
 
                 if now > next_keep_alive {
-                    conn.keep_alive().await?
+                    conn.keep_alive().await?;
+                    next_keep_alive = conn.last_keep_alive
+                        + get_option(SYNC_INTERVAL)
+                        + rng.random_range(0..TIME_RAND_RANGE) as u64;
+                    now = get_utc_now()?;
                 }
 
                 let mut tmp_peek_buf: [u8; 16] = [0; 16];
@@ -580,7 +588,7 @@ impl Connection {
         }
 
         debug!("Sending image.");
-        let msg = Message::new(MessageKind::Text, clipboard.to_vec(), Some(stamp))?.to_packet();
+        let msg = Message::new(MessageKind::Image, clipboard.to_vec(), Some(stamp))?.to_packet();
         self.last_keep_alive = get_utc_now()?;
         self.last_sync = get_utc_now()?;
         match timeout(
