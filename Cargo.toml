@@ -1,6 +1,6 @@
 [package]
 name = "uniclip-rs"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 authors = ["Sayuri Nekomiya <bbh@awsl.rip>"]
 license = "MIT"

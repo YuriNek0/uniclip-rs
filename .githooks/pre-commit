@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+HOOKS_DIR=$(dirname $0)
+bash "${HOOKS_DIR}/update-flake.sh" uniclip
