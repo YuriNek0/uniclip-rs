@@ -15,6 +15,26 @@ This software is created for educational and experimental purposes. It has not u
 3. Liability
 The author(s) shall not be held liable for any data loss, security breaches, or system failures resulting from the use of this software. Use it at your own risk.
 
+## Supports
+### Format
+- :white_check_mark: Text
+- :white_check_mark: Image
+- :x: Password (Not possible as [Arboard](https://github.com/1Password/arboard/) does not support capturing MIME type.)
+- :white_large_square: File
+- :white_large_square: Multiple files
+
+### Platforms
+- :white_check_mark: Windows
+- :white_check_mark: MacOS
+- :white_check_mark: X11
+- :white_check_mark: Wayland
+
+### Tested
+- :white_large_square: Windows
+- :white_check_mark: MacOS
+- :white_large_square: X11
+- :white_check_mark: Wayland
+
 ## Usage
 ```
 Usage: uniclip-rs [OPTIONS] <CONNECTION_STRING>
