@@ -28,7 +28,7 @@
             pname = "uniclip-rs";
             version = "0.0.1";
             src = ./.;
-            cargoHash = "sha256-nwjl0Al6SzDx/0hkRzoW1M6JwGZmt2TVF27XATXNOOA=";
+            cargoHash = "sha256-/j7CAG559d6luHjwHCI1fOn0dqdScO7KoNmppU73cGM=";
 
             meta = with pkgs.lib; {
               description = "A rust fork of uniclip - Cross-platform shared clipboard";
