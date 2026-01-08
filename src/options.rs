@@ -69,7 +69,6 @@ pub fn set_options() -> (bool, String) {
     let args = Args::parse();
     _ALLOWED_TIME_DIFF.set(args.allowed_time_diff).unwrap();
     _KEEP_ALIVE.set(args.keep_alive).unwrap();
-    _SYNC_ON_START.set(args.paste_server_clipboard).unwrap();
     _MAX_BUFFER_SIZE
         .set(args.max_message_size * 1024 * 1024)
         .unwrap();
@@ -79,10 +78,13 @@ pub fn set_options() -> (bool, String) {
         .set(args.clipboard_poll_freq_ms)
         .unwrap();
 
-    if get_option(SYNC_ON_START) && args.server_mode {
+    if args.paste_server_clipboard && args.server_mode {
         warn!(
             "Options paste_server_clipboard enabled on server mode. This option will be ignored."
         );
+        _SYNC_ON_START.set(false).unwrap();
+    } else {
+        _SYNC_ON_START.set(args.paste_server_clipboard).unwrap();
     }
 
     (args.server_mode, args.connection_string)

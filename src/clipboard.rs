@@ -1,5 +1,5 @@
+use arboard::Error::*;
 use arboard::{Clipboard as ArBoard, ImageData};
-use arboard::{Error::*, SetExtApple};
 use image::DynamicImage;
 use image::codecs::png::PngDecoder;
 use image::{ImageDecoder as _, ImageEncoder as _};
@@ -15,6 +15,16 @@ use crate::options::get_option;
 use crate::options::*;
 use crate::proto::Command;
 use crate::timestamp::get_utc_now;
+
+#[cfg(target_os = "macos")]
+use arboard::SetExtApple;
+#[cfg(all(
+    unix,
+    not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+))]
+use arboard::SetExtLinux;
+#[cfg(windows)]
+use arboard::SetExtWindows;
 
 #[derive(Hash, Clone)]
 enum ClipboardState {
@@ -121,6 +131,24 @@ impl Clipboard {
             return Ok(()); // Reject setting clipboard as the content is not the latest.
         }
 
+        let state = ClipboardState::Text(s.clone());
+        let mut hasher = DefaultHasher::new();
+        state.hash(&mut hasher);
+
+        let hash = hasher.finish();
+        if hash == self.ctx.hash {
+            // Do not update the current context when the content is the same.
+            return Ok(());
+        }
+
+        let ctx = ClipboardContext {
+            stamp: get_utc_now()?,
+            state: state,
+            hash,
+        };
+
+        self.ctx = ctx;
+
         if let Err(e) = self.backend.set().exclude_from_history().text(s) {
             Err(ClipboardError(e))
         } else {
@@ -134,6 +162,24 @@ impl Clipboard {
             debug!("Clipboard: Failed - received data is expired.");
             return Ok(()); // Reject setting clipboard as the content is not the latest.
         }
+
+        let state = ClipboardState::Image(buf.clone());
+        let mut hasher = DefaultHasher::new();
+        state.hash(&mut hasher);
+
+        let hash = hasher.finish();
+        if hash == self.ctx.hash {
+            // Do not update the current context when the content is the same.
+            return Ok(());
+        }
+
+        let ctx = ClipboardContext {
+            stamp: get_utc_now()?,
+            state: state,
+            hash,
+        };
+
+        self.ctx = ctx;
 
         if let Err(e) = self
             .backend
@@ -168,7 +214,11 @@ impl ClipboardListener {
             },
             backend,
         };
-        let _ = clipboard.get()?;
+
+        // Skip local clipboard fetching and wait server's content.
+        if !get_option(SYNC_ON_START) {
+            let _ = clipboard.get()?;
+        }
         Ok(Self { clipboard })
     }
 
@@ -201,6 +251,12 @@ impl ClipboardListener {
                           send_tx: &broadcast::Sender<Command>,
                           token: &CancellationToken|
          -> bool {
+            if manager.clipboard.ctx.stamp == 0 {
+                // The clipboard is not initialised.
+                // We are still waiting for server's content.
+                return true;
+            }
+
             let fetch_res = manager.clipboard.get();
             if let Err(e) = fetch_res {
                 if !Self::handle_error(e, token) {
