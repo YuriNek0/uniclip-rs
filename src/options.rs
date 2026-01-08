@@ -7,6 +7,7 @@ static _MAX_BUFFER_SIZE: OnceLock<u64> = OnceLock::new();
 static _SYNC_INTERVAL: OnceLock<u64> = OnceLock::new();
 static _TIMEOUT_SEC: OnceLock<u64> = OnceLock::new();
 static _CLIPBOARD_POLL_FREQ_MS: OnceLock<u64> = OnceLock::new();
+static _SYNC_ON_START: OnceLock<bool> = OnceLock::new();
 
 pub static ALLOWED_TIME_DIFF: &OnceLock<u64> = &_ALLOWED_TIME_DIFF;
 pub static KEEP_ALIVE: &OnceLock<u64> = &_KEEP_ALIVE;
@@ -14,6 +15,7 @@ pub static MAX_BUFFER_SIZE: &OnceLock<u64> = &_MAX_BUFFER_SIZE;
 pub static SYNC_INTERVAL: &OnceLock<u64> = &_SYNC_INTERVAL;
 pub static TIMEOUT_SEC: &OnceLock<u64> = &_TIMEOUT_SEC;
 pub static CLIPBOARD_POLL_FREQ_MS: &OnceLock<u64> = &_CLIPBOARD_POLL_FREQ_MS;
+pub static SYNC_ON_START: &OnceLock<bool> = &_SYNC_ON_START;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -21,6 +23,10 @@ struct Args {
     /// Use this option to start the server.
     #[arg(short, default_value_t = false)]
     server_mode: bool,
+
+    /// Overwrite the clipboard by Server's clipboard content on start.
+    #[arg(short, long, default_value_t = false)]
+    paste_server_clipboard: bool,
 
     /// Server/Bind address. (e.g. "127.0.0.1:12345")
     connection_string: String,
@@ -63,6 +69,7 @@ pub fn set_options() -> (bool, String) {
     let args = Args::parse();
     _ALLOWED_TIME_DIFF.set(args.allowed_time_diff).unwrap();
     _KEEP_ALIVE.set(args.keep_alive).unwrap();
+    _SYNC_ON_START.set(args.paste_server_clipboard).unwrap();
     _MAX_BUFFER_SIZE
         .set(args.max_message_size * 1024 * 1024)
         .unwrap();
@@ -71,6 +78,12 @@ pub fn set_options() -> (bool, String) {
     _CLIPBOARD_POLL_FREQ_MS
         .set(args.clipboard_poll_freq_ms)
         .unwrap();
+
+    if get_option(SYNC_ON_START) && args.server_mode {
+        warn!(
+            "Options paste_server_clipboard enabled on server mode. This option will be ignored."
+        );
+    }
 
     (args.server_mode, args.connection_string)
 }

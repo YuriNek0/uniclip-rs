@@ -1,5 +1,5 @@
-use arboard::Error::*;
 use arboard::{Clipboard as ArBoard, ImageData};
+use arboard::{Error::*, SetExtApple};
 use image::DynamicImage;
 use image::codecs::png::PngDecoder;
 use image::{ImageDecoder as _, ImageEncoder as _};
@@ -121,7 +121,7 @@ impl Clipboard {
             return Ok(()); // Reject setting clipboard as the content is not the latest.
         }
 
-        if let Err(e) = self.backend.set_text(s) {
+        if let Err(e) = self.backend.set().exclude_from_history().text(s) {
             Err(ClipboardError(e))
         } else {
             Ok(())
@@ -135,7 +135,12 @@ impl Clipboard {
             return Ok(()); // Reject setting clipboard as the content is not the latest.
         }
 
-        if let Err(e) = self.backend.set_image(read_png(buf.as_slice())?) {
+        if let Err(e) = self
+            .backend
+            .set()
+            .exclude_from_history()
+            .image(read_png(buf.as_slice())?)
+        {
             Err(ClipboardError(e))
         } else {
             Ok(())

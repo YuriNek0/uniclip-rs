@@ -202,7 +202,11 @@ impl Connection {
             last_sync: 0,
         };
 
-        tracker.spawn(conn.connection_handler(addr.to_string(), client_token));
+        tracker.spawn(conn.connection_handler(
+            addr.to_string(),
+            client_token,
+            get_option(SYNC_ON_START),
+        ));
     }
 
     pub fn spawn_serve(
@@ -256,9 +260,11 @@ impl Connection {
                         // Each client has their own cancellation token.
                         // When the server token gets canceled, tokens for clients will be cancelled as well.
                         let client_token = cancel_token.child_token();
-                        _tracker.spawn(
-                            conn.connection_handler(client_addr.to_string(), client_token.clone()),
-                        );
+                        _tracker.spawn(conn.connection_handler(
+                            client_addr.to_string(),
+                            client_token.clone(),
+                            false,
+                        ));
                     }
                 })
                 .await;
@@ -274,6 +280,7 @@ impl Connection {
         mut self: Self,
         addr: String,
         cancel_token: CancellationToken,
+        initial_sync: bool,
     ) -> () {
         debug!("Starting connection handler for client {}.", addr);
         let closure = async |conn: &mut Self| -> Result<(), UniClipError> {
@@ -353,10 +360,44 @@ impl Connection {
             Ok(())
         };
 
+        let handle_err = |stream: &mut TcpStream, result| match result {
+            UniClipError::DisconnectedError => {
+                info!("[{}] Client Disconnected!", addr);
+                cancel_token.cancel();
+                false
+            }
+            UniClipError::ClipboardError(_) | UniClipError::MessageTooLargeError => {
+                let s = "LOCAL".to_string();
+                result.report(&s);
+                true
+            }
+            _ => {
+                if let Ok(err_msg) = Message::new(
+                    MessageKind::Error,
+                    result.as_ref().to_string().into_bytes(),
+                    None,
+                ) {
+                    let _ = stream.try_write(err_msg.to_packet().as_bytes());
+                }
+                result.panic(&addr, &cancel_token);
+                false
+            }
+        };
+
         // Send handshake to the client and expecting a returned message
         if let Err(e) = self.keep_alive().await {
-            let _ = e.panic(&addr, &cancel_token);
-            return ();
+            if !handle_err(&mut self.stream, e) {
+                return ();
+            }
+        }
+
+        // Accept server's clipboard content if sync_on_start is enabled
+        if initial_sync {
+            if let Err(e) = self.req_sync().await {
+                if !handle_err(&mut self.stream, e) {
+                    return ();
+                }
+            }
         }
 
         loop {
@@ -365,28 +406,9 @@ impl Connection {
                 break;
             }
 
-            let result = ret.unwrap_err();
-            match result {
-                UniClipError::DisconnectedError => {
-                    info!("[{}] Client Disconnected!", addr);
-                    cancel_token.cancel();
-                    break;
-                }
-                UniClipError::ClipboardError(_) => {
-                    let s = "LOCAL".to_string();
-                    result.report(&s);
-                    break;
-                }
-                _ => {
-                    if let Ok(err_msg) = Message::new(
-                        MessageKind::Error,
-                        result.as_ref().to_string().into_bytes(),
-                        None,
-                    ) {
-                        let _ = self.stream.try_write(err_msg.to_packet().as_bytes());
-                    }
-                    result.panic(&addr, &cancel_token)
-                }
+            let e = ret.unwrap_err();
+            if !handle_err(&mut self.stream, e) {
+                break;
             }
         }
         ()
