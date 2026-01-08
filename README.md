@@ -45,6 +45,41 @@ Options:
           Print version
 ```
 
+## Use App2Unit script to start it as a systemd unit
+App2unit is a light weight bash script to launch apps as systemd user units. This can enroll uniclip-rs to your session manager (e.g. [UWSM](https://github.com/Vladimir-csp/uwsm)).
+I also added auto restart properties into the service.
+```bash
+  app2unit -s s -t service -d \"Uniclip-rs clipboard sharing\" -p Restart=always -p RestartSec=5 -- uniclip-rs [add your options here] host:port
+```
+
+## Installaltion guide for NixOS users
+1. Add the following to your `inputs`.
+```nix
+  uniclip = {
+    url = "github:yurinek0/uniclip-rs";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+```
+2. Add the following overlay.
+```nix
+  (final: prev: {
+    uniclip = inputs'.uniclip.packages.uniclip;
+  })
+```
+3. Add `pkgs.uniclip` to your home-manager packages.
+4. Optional: Auto start after login.
+  - There are multiple ways to achieve this. I recommend to start it with your compositor. Here is an example config for niri.
+  - ```nix
+      programs.niri.settings = {
+        spawn-at-startup = [
+          {
+            sh = "app2unit -s s -t service -d \"Uniclip-rs clipboard sharing\" -p Restart=always -p RestartSec=5 -- uniclip-rs -p ${self.meta.qemu-host.ip}:${self.meta.qemu-host.uniclip-port}";
+          }
+        ];
+      };
+    ```
+  - Source: [qemu-guest.nix](https://github.com/YuriNek0/dotfiles/blob/nixos/users/yuri/qemu-guest.nix)
+
 ## Contributing
 
 Before commiting to the repo, use the following command to set the git hook path. A script to update *cargoHash* flake.nix will be executed automatically. Please make sure you have nix and nix-update installed.
