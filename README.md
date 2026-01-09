@@ -66,7 +66,7 @@ Options:
 ```
 
 ## Use App2Unit script to start it as a systemd unit
-App2unit is a light weight bash script to launch apps as systemd user units. This can enroll uniclip-rs to your session manager (e.g. [UWSM](https://github.com/Vladimir-csp/uwsm)).
+[App2unit](https://github.com/Vladimir-csp/app2unit) is a light weight bash script to launch apps as systemd user units. This can enroll uniclip-rs to your session manager (e.g. [UWSM](https://github.com/Vladimir-csp/uwsm)).
 I also added auto restart properties into the service.
 ```bash
   app2unit -s s -t service -d \"Uniclip-rs clipboard sharing\" -p Restart=always -p RestartSec=5 -- uniclip-rs [add your options here] host:port
